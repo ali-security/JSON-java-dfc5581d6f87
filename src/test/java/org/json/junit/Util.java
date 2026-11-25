@@ -117,4 +117,41 @@ public class Util {
             );
         }
     }
+
+    /**
+     * Runs the given task on a dedicated thread with a large (8 MB) stack and
+     * returns whatever the task threw.
+     * <p>
+     * The test suite may be run with a small stack (for example -Xss512k), on
+     * which even a correctly bounded recursive parse that stops at the default
+     * nesting limit can exhaust the stack of the calling thread. Running the
+     * task on a thread with a known, large stack makes nesting depth assertions
+     * deterministic: a bounded parser fails with its own exception, while an
+     * unbounded one still overflows the stack when fed deep enough input.
+     *
+     * @param task the code to run
+     * @return the Throwable thrown by the task, or <code>null</code> if the
+     *         task completed normally
+     */
+    public static Throwable throwableFromLargeStack(final Runnable task) {
+        final Throwable[] thrown = new Throwable[1];
+        Thread worker = new Thread(null, new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    task.run();
+                } catch (Throwable t) {
+                    thrown[0] = t;
+                }
+            }
+        }, "large-stack", 8L * 1024 * 1024);
+        worker.start();
+        try {
+            worker.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted while waiting for the large-stack thread", e);
+        }
+        return thrown[0];
+    }
 }
